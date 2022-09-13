@@ -44,7 +44,7 @@ Flask-Login==0.4.1
 Flask-OpenID==1.2.5
 Flask-SQLAlchemy==2.5.1
 Flask-WTF==0.14.3
-flower==0.9.7
+flower==1.2.0
 graphviz==0.16
 gunicorn==19.10.0
 humanize==3.4.1
