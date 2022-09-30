@@ -1,0 +1,37 @@
+version: '3.7'
+services:
+    airflow-metabase:
+        image: postgres:10-alpine
+        environment:
+            - POSTGRES_USER=airflow
+            - POSTGRES_PASSWORD=airflow
+            - POSTGRES_DB=airflow
+        #        ports:
+        #            - "5533:5432"
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - "${PWD}/metabase-data:/var/lib/postgresql/data"
+
+    resetdb:
+        image: amazon/mwaa-local:2.2
+        depends_on:
+            - airflow-metabase
+        environment:
+            - LOAD_EX=n
+            - EXECUTOR=Local
+        env_file:
+            - ${PWD}/.env
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - ${PWD}/requirements.txt:/usr/local/airflow/requirements.txt
+            - ${PWD}/dags:/usr/local/airflow/dags
+            - ${PWD}/plugins:/usr/local/airflow/plugins
+        ports:
+            - "8080:8080"
+        command: resetdb

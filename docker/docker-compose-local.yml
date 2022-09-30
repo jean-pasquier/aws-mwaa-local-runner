@@ -1,0 +1,102 @@
+version: '3.7'
+
+volumes:
+    mount-metabase:
+
+    mount-dwh:
+
+services:
+
+    # aiflow metabase rely on postgres
+    metabase:
+        image: postgres:10-alpine
+        environment:
+            - POSTGRES_USER=airflow
+            - POSTGRES_PASSWORD=airflow
+            - POSTGRES_DB=airflow
+        ports:
+            - "5433:5432"
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - mount-metabase:/var/lib/postgresql/data
+
+    # Local MWAA airflow instance
+    local-runner:
+        image: amazon/mwaa-local:2.2
+        restart: always
+        depends_on:
+            - metabase
+        environment:
+            - LOAD_EX=n
+            - EXECUTOR=Local
+            - PYTHONPATH=/usr/local/airflow/:/usr/local/airflow/dags/
+        env_file:
+            - /Users/JEAN/Documents/airflow-team-data/.env
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - "/Users/JEAN/Documents/airflow-team-data/requirements.txt:/usr/local/airflow/requirements.txt"
+            - "/Users/JEAN/Documents/airflow-team-data/dags:/usr/local/airflow/dags"
+            - "/Users/JEAN/Documents/airflow-team-data/plugins:/usr/local/airflow/plugins"
+            - "/Users/JEAN/Documents/airflow-team-data/dps-airflow-operators:/usr/local/airflow/dps-airflow-operators"
+        ports:
+            - "8080:8080"
+        command: local-runner
+        healthcheck:
+            test: [ "CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]" ]
+            interval: 30s
+            timeout: 30s
+            retries: 3
+
+    # datalake S3 like
+    dlk:
+        image: minio/minio:RELEASE.2022-07-24T17-09-31Z
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        environment:
+            - MINIO_ROOT_USER=minio_usr
+            - MINIO_ROOT_PASSWORD=minio_pwd
+        command: server --console-address ":9001" /data
+
+    # data warehouse Redshift/postgres-like
+    dwh:
+        image: postgres:10-alpine
+        environment:
+            - POSTGRES_USER=redshift
+            - POSTGRES_PASSWORD=redshift
+            - POSTGRES_DB=redshift
+            - PGDATA=/var/lib/postgresql/data/data
+        ports:
+            - "5539:5432"
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - mount-dwh:/var/lib/postgresql/data
+
+    # Init minio: add user & create bucket
+    init-dlk:
+        image: minio/mc:RELEASE.2022-07-15T09-20-55Z
+        depends_on:
+            - dlk
+        links:
+            - "dlk:minio"
+        entrypoint: >
+            /bin/sh -c "
+            /usr/bin/sleep 5;
+            /usr/bin/mc alias set myminio http://minio:9000 minio_usr minio_pwd;
+            /usr/bin/mc mb myminio/bucket;
+            /usr/bin/mc mb myminio/preprod-bucket;
+            /usr/bin/mc policy set public myminio/bucket;
+            /usr/bin/mc policy set public myminio/preprod-bucket;
+            /usr/bin/mc admin user add myminio airflow_minio_usr airflow_minio_pwd;
+            /usr/bin/mc admin policy set myminio readwrite user=airflow_minio_usr;
+            /usr/bin/mc admin user svcacct add --access-key "airflow_minio_key" --secret-key "airflow_minio_secret" myminio airflow_minio_usr;
+            "

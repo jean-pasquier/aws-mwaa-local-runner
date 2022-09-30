@@ -1,0 +1,16 @@
+default_args:
+    owner: team
+    email: team@hello.com
+    retries: 1
+    email_on_failure: False
+    email_on_retry: False
+
+
+default_dag_parameters:
+    tags: ['team']
+
+
+default_timezone: 'Europe/Paris'
+master: 'yarn'
+emr_version: 'emr-6.5.0'
+deploy_mode: 'client'
